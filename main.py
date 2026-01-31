@@ -28,12 +28,12 @@ from data import get_russell3000, get_sp500
 SIMFIN_API_KEY = "cda023f3-0157-44f6-a30c-28b4a9c2b36f"
 
 # Set to True for broad market, False for S&P 500 only
-USE_BROAD_MARKET = False  # Start with S&P 500 for faster testing
+USE_BROAD_MARKET = True  # Use S&P 1500 for broader coverage
 
 # Screening criteria
 MAX_PE = 35
 MIN_INCOME_GROWTH = 10  # percent
-MIN_INSIDER_OWNERSHIP = 20  # percent
+MIN_INSIDER_OWNERSHIP = 10  # percent (lowered from 20 - very few stocks have >20%)
 
 # Hybrid backtest settings - test multiple combinations
 ENTRY_YEARS = [2016, 2017, 2018, 2019, 2020, 2021]
