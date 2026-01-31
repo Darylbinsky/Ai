@@ -8,6 +8,7 @@ from .universes import (
     get_universe,
     load_from_file
 )
+from .simfin_data import SimFinData
 
 __all__ = [
     'DataFetcher',
@@ -17,5 +18,6 @@ __all__ = [
     'get_sp1500',
     'get_russell3000',
     'get_universe',
-    'load_from_file'
+    'load_from_file',
+    'SimFinData'
 ]

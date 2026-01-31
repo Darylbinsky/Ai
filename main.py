@@ -1,21 +1,47 @@
 #!/usr/bin/env python3
 """
-Stock Screener - Fundamental Analysis
+Stock Screener - Fundamental Analysis with Historical Backtesting
 
-Screens stocks based on fundamental criteria:
-- Insider ownership
-- P/E ratio
-- Net income growth
+Features:
+1. Screen stocks TODAY based on fundamental criteria (yfinance)
+2. Backtest the strategy on HISTORICAL data (SimFin)
+
+Criteria:
+- Insider ownership > 20% (current screen only - SimFin doesn't have this)
+- P/E ratio < 35
+- Net income growth > 10%
 """
 
+import os
 from screener import FundamentalScreener
+from backtester import FundamentalBacktester
 from data import get_russell3000, get_sp500
 
 
-# Set to True for full S&P 1500 screening (takes 30+ minutes)
-# Set to False for quick demo with S&P 500 (takes ~10 minutes)
-USE_BROAD_MARKET = True
+# ============================================================
+# CONFIGURATION
+# ============================================================
 
+# SimFin API Key (get free key at simfin.com)
+SIMFIN_API_KEY = "cda023f3-0157-44f6-a30c-28b4a9c2b36f"
+
+# Set to True for broad market, False for S&P 500 only
+USE_BROAD_MARKET = False  # Start with S&P 500 for faster testing
+
+# Screening criteria
+MAX_PE = 35
+MIN_INCOME_GROWTH = 10  # percent
+MIN_INSIDER_OWNERSHIP = 20  # percent (current screen only)
+
+# Backtest settings
+BACKTEST_START = "2019-01-01"
+BACKTEST_END = "2024-01-01"
+REBALANCE_MONTHS = 12  # Rebalance annually
+
+
+# ============================================================
+# FUNCTIONS
+# ============================================================
 
 def get_stock_universe():
     """Get the stock universe to screen."""
@@ -27,75 +53,109 @@ def get_stock_universe():
         print()
         return get_russell3000()
     else:
-        print("\nUsing S&P 500 for faster screening...")
+        print("\nUsing S&P 500 for faster processing...")
         return get_sp500()
 
 
-def run_fundamental_screen():
-    """Run fundamental stock screening."""
+def run_current_screen():
+    """Screen stocks based on current fundamental data."""
     print("\n" + "=" * 60)
-    print("FUNDAMENTAL STOCK SCREENER")
+    print("CURRENT FUNDAMENTAL SCREEN (Today's Data)")
     print("=" * 60)
     print()
     print("Criteria:")
-    print("  - Insider Ownership > 20%")
-    print("  - P/E Ratio < 35")
-    print("  - Net Income Growth > 10% (3-year CAGR)")
-    print("  - Price > $5 (avoid penny stocks)")
+    print(f"  - Insider Ownership > {MIN_INSIDER_OWNERSHIP}%")
+    print(f"  - P/E Ratio < {MAX_PE}")
+    print(f"  - Net Income Growth > {MIN_INCOME_GROWTH}%")
+    print("  - Price > $5")
     print()
 
-    # Get stock universe
     universe = get_stock_universe()
     print(f"\nTotal stocks to screen: {len(universe)}")
-    print("\nNote: Fundamental data takes longer to fetch than technical data.")
-    print("This screen will take approximately 20-40 minutes.\n")
 
     screener = FundamentalScreener()
-
-    # Run the screen with user's criteria
     results = screener.screen(
         universe=universe,
-        min_insider_ownership=20,  # > 20%
-        max_pe=35,                  # P/E < 35
-        min_income_growth=10,       # > 10% net income growth
-        min_price=5,                # Avoid penny stocks
-        delay=0.3                   # Slightly slower to avoid rate limits
+        min_insider_ownership=MIN_INSIDER_OWNERSHIP,
+        max_pe=MAX_PE,
+        min_income_growth=MIN_INCOME_GROWTH,
+        min_price=5,
+        delay=0.3
     )
 
-    # Print results
     print("\n" + "=" * 60)
-    print("SCREENING RESULTS")
+    print("CURRENT SCREENING RESULTS")
     print("=" * 60)
     screener.print_results(results, sort_by='insider_ownership')
 
     return results
 
 
-def main():
-    """Run the fundamental screener."""
+def run_historical_backtest():
+    """Backtest the fundamental strategy on historical data."""
     print("\n" + "=" * 60)
-    print("STOCK SCREENER - FUNDAMENTAL ANALYSIS")
+    print("HISTORICAL BACKTEST (SimFin Data)")
     print("=" * 60)
+    print()
+    print("Strategy:")
+    print(f"  - P/E Ratio < {MAX_PE}")
+    print(f"  - Net Income Growth > {MIN_INCOME_GROWTH}%")
+    print(f"  - Rebalance every {REBALANCE_MONTHS} months")
+    print()
+    print("Note: Insider ownership not available in historical data.")
+    print()
+
+    universe = get_stock_universe()
+
+    backtester = FundamentalBacktester(api_key=SIMFIN_API_KEY)
+
+    results = backtester.backtest(
+        tickers=universe,
+        start_date=BACKTEST_START,
+        end_date=BACKTEST_END,
+        rebalance_months=REBALANCE_MONTHS,
+        max_pe=MAX_PE,
+        min_income_growth=MIN_INCOME_GROWTH,
+        growth_years=3,
+        max_holdings=20
+    )
+
+    backtester.print_results(results)
+    backtester.compare_to_benchmark(results, benchmark_ticker='SPY')
+
+    return results
+
+
+def main():
+    """Main entry point."""
+    print("\n" + "=" * 60)
+    print("FUNDAMENTAL STOCK SCREENER & BACKTESTER")
+    print("=" * 60)
+    print()
+    print("Options:")
+    print("  1. Current Screen - Find stocks passing criteria TODAY")
+    print("  2. Historical Backtest - Test strategy on past data")
+    print("  3. Both")
+    print()
+
+    choice = input("Enter choice (1/2/3) [default=3]: ").strip() or "3"
 
     try:
-        results = run_fundamental_screen()
+        if choice in ["1", "3"]:
+            run_current_screen()
 
-        if results:
-            print("\n" + "-" * 60)
-            print("SUMMARY")
-            print("-" * 60)
-            print(f"Found {len(results)} stocks matching your criteria:")
-            print("  - Insider Ownership > 20%")
-            print("  - P/E < 35")
-            print("  - Net Income Growth > 10%")
+        if choice in ["2", "3"]:
+            run_historical_backtest()
 
     except KeyboardInterrupt:
-        print("\n\nScreening cancelled by user.")
+        print("\n\nCancelled by user.")
     except Exception as e:
-        print(f"\nError during screening: {e}")
+        print(f"\nError: {e}")
+        import traceback
+        traceback.print_exc()
 
     print("\n" + "=" * 60)
-    print("Screening complete!")
+    print("Complete!")
     print("=" * 60)
 
 
