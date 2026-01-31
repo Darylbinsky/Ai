@@ -1,6 +1,8 @@
 """Stock screener implementation."""
 
 import pandas as pd
+import time
+import sys
 from typing import List, Dict, Any, Optional, Callable
 from data.fetcher import DataFetcher
 from .filters import Filters
@@ -19,7 +21,9 @@ class StockScreener:
         filters: Dict[str, Any],
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        period: str = "1y"
+        period: str = "1y",
+        show_progress: bool = True,
+        delay: float = 0.1
     ) -> List[Dict[str, Any]]:
         """
         Screen stocks based on specified filters.
@@ -30,6 +34,8 @@ class StockScreener:
             start_date: Start date for historical data
             end_date: End date for historical data
             period: Period if dates not specified
+            show_progress: Show progress indicator
+            delay: Delay between requests (seconds) to avoid rate limiting
 
         Available filters:
             - rsi_below: RSI below threshold
@@ -56,13 +62,21 @@ class StockScreener:
             List of dictionaries with passing stocks and their metrics
         """
         results = []
+        total = len(universe)
+        errors = 0
 
-        for symbol in universe:
+        for i, symbol in enumerate(universe):
+            # Show progress
+            if show_progress:
+                pct = (i + 1) / total * 100
+                passed = len(results)
+                sys.stdout.write(f"\rScreening: {i+1}/{total} ({pct:.1f}%) | Passed: {passed} | Errors: {errors} | Current: {symbol}    ")
+                sys.stdout.flush()
+
             try:
                 data = self.fetcher.get_stock_data(symbol, start_date, end_date, period)
 
                 if len(data) < 200:  # Need enough data for indicators
-                    print(f"Warning: Insufficient data for {symbol}")
                     continue
 
                 # Add indicators
@@ -74,7 +88,17 @@ class StockScreener:
                     results.append(metrics)
 
             except Exception as e:
-                print(f"Error screening {symbol}: {e}")
+                errors += 1
+                # Only print errors if not showing progress (to avoid cluttering output)
+                if not show_progress:
+                    print(f"Error screening {symbol}: {e}")
+
+            # Rate limiting
+            if delay > 0:
+                time.sleep(delay)
+
+        if show_progress:
+            print(f"\n\nScreening complete! {len(results)} stocks passed out of {total} screened.")
 
         return results
 

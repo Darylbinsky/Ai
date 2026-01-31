@@ -7,6 +7,7 @@ This script demonstrates how to use the stock screener and backtester.
 
 from screener import StockScreener
 from backtester import Backtester
+from data import get_russell3000, get_sp500
 from strategies import (
     MACrossoverStrategy,
     RSIStrategy,
@@ -17,60 +18,80 @@ from strategies import (
 )
 
 
+# Set to True for full Russell 3000 screening (takes 30+ minutes)
+# Set to False for quick demo with S&P 500 (takes ~5 minutes)
+USE_RUSSELL_3000 = True
+
+
+def get_stock_universe():
+    """Get the stock universe to screen."""
+    if USE_RUSSELL_3000:
+        print("\n" + "=" * 60)
+        print("FETCHING RUSSELL 3000 STOCKS")
+        print("=" * 60)
+        print("(This uses S&P 1500 as approximation - covers large, mid, small cap)")
+        print()
+        return get_russell3000()
+    else:
+        print("\nUsing S&P 500 for quick screening...")
+        return get_sp500()
+
+
 def demo_screener():
     """Demonstrate the stock screener."""
     print("\n" + "=" * 60)
-    print("STOCK SCREENER DEMO")
+    print("STOCK SCREENER")
     print("=" * 60)
 
-    # Define universe of stocks to screen
-    universe = [
-        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META',
-        'NVDA', 'TSLA', 'JPM', 'V', 'JNJ',
-        'WMT', 'PG', 'MA', 'HD', 'DIS'
-    ]
+    # Get stock universe
+    universe = get_stock_universe()
+    print(f"\nTotal stocks to screen: {len(universe)}")
 
     screener = StockScreener()
 
-    # Example 1: Find stocks with RSI below 40 (potentially oversold)
-    print("\n📊 Screening for stocks with RSI < 40...")
+    # Screen for oversold stocks with good volume
+    print("\n" + "-" * 60)
+    print("SCREEN 1: Oversold Stocks (RSI < 35)")
+    print("-" * 60)
     results = screener.screen(
         universe=universe,
         filters={
-            'rsi_below': 40,
-            'min_volume': 500000
+            'rsi_below': 35,
+            'min_volume': 500000,
+            'min_price': 5  # Avoid penny stocks
         }
     )
-    screener.print_results(results)
+    screener.print_results(results, sort_by='rsi')
 
-    # Example 2: Find stocks in uptrend
-    print("\n📊 Screening for stocks in uptrend (above SMA 50 and 200)...")
+    # Screen for stocks in strong uptrend
+    print("\n" + "-" * 60)
+    print("SCREEN 2: Strong Uptrend (Above SMA 50 & 200)")
+    print("-" * 60)
     results = screener.screen(
         universe=universe,
         filters={
             'above_sma_50': True,
             'above_sma_200': True,
-            'min_volume': 1000000
+            'min_volume': 1000000,
+            'min_price': 10
         }
     )
-    screener.print_results(results)
+    screener.print_results(results, sort_by='returns_1m')
 
-    # Example 3: Find stocks with MACD bullish crossover
-    print("\n📊 Screening for stocks with MACD bullish...")
+    # Screen for MACD bullish with momentum
+    print("\n" + "-" * 60)
+    print("SCREEN 3: Bullish MACD + Not Overbought")
+    print("-" * 60)
     results = screener.screen(
         universe=universe,
         filters={
             'macd_bullish': True,
-            'rsi_below': 70  # Not overbought
+            'rsi_below': 65,
+            'rsi_above': 40,
+            'min_volume': 500000
         }
     )
     screener.print_results(results)
-
-    # Get detailed analysis for a single stock
-    print("\n📊 Detailed analysis for AAPL:")
-    analysis = screener.get_stock_analysis('AAPL')
-    for key, value in analysis.items():
-        print(f"  {key}: {value}")
 
 
 def demo_backtest():
