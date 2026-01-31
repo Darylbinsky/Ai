@@ -77,25 +77,45 @@ class HybridBacktester:
         results = []
         total = len(tickers)
 
+        # Debug counters
+        no_insider = 0
+        low_insider = 0
+        no_pe = 0
+        high_pe = 0
+        no_growth = 0
+        low_growth = 0
+
         for i, ticker in enumerate(tickers):
-            if show_progress and (i + 1) % 20 == 0:
+            if show_progress and (i + 1) % 50 == 0:
                 sys.stdout.write(f"\rScreening: {i+1}/{total} | Passed: {len(results)}")
                 sys.stdout.flush()
 
             try:
                 # Get CURRENT insider ownership
                 insider = self.get_current_insider_ownership(ticker)
-                if insider is None or insider < min_insider_ownership:
+                if insider is None:
+                    no_insider += 1
+                    continue
+                if insider < min_insider_ownership:
+                    low_insider += 1
                     continue
 
                 # Get HISTORICAL P/E
                 pe = self.simfin.get_historical_pe(ticker, historical_date)
-                if pe is None or pe <= 0 or pe > max_pe:
+                if pe is None:
+                    no_pe += 1
+                    continue
+                if pe <= 0 or pe > max_pe:
+                    high_pe += 1
                     continue
 
                 # Get HISTORICAL income growth
                 growth = self.simfin.get_income_growth(ticker, years=3, as_of_date=historical_date)
-                if growth is None or growth < min_income_growth:
+                if growth is None:
+                    no_growth += 1
+                    continue
+                if growth < min_income_growth:
+                    low_growth += 1
                     continue
 
                 # Get price at historical date
@@ -116,7 +136,15 @@ class HybridBacktester:
             time.sleep(0.05)  # Rate limiting
 
         if show_progress:
-            print(f"\rScreening complete: {len(results)} stocks passed")
+            print(f"\rScreening complete: {len(results)} stocks passed                    ")
+            print(f"\n  Filter breakdown:")
+            print(f"    - No insider data: {no_insider}")
+            print(f"    - Insider < {min_insider_ownership}%: {low_insider}")
+            print(f"    - No SimFin P/E data: {no_pe}")
+            print(f"    - P/E > {max_pe} or negative: {high_pe}")
+            print(f"    - No SimFin growth data: {no_growth}")
+            print(f"    - Growth < {min_income_growth}%: {low_growth}")
+            print(f"    - PASSED: {len(results)}")
 
         return results
 
