@@ -4,6 +4,21 @@ import pandas as pd
 from typing import List, Optional
 import os
 import time
+import requests
+from io import StringIO
+
+
+# User-Agent header to avoid 403 errors from Wikipedia
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+}
+
+
+def _fetch_wikipedia_table(url: str) -> List[pd.DataFrame]:
+    """Fetch tables from Wikipedia with proper headers."""
+    response = requests.get(url, headers=HEADERS)
+    response.raise_for_status()
+    return pd.read_html(StringIO(response.text))
 
 
 def get_sp500() -> List[str]:
@@ -15,7 +30,7 @@ def get_sp500() -> List[str]:
     """
     try:
         url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-        tables = pd.read_html(url)
+        tables = _fetch_wikipedia_table(url)
         sp500_table = tables[0]
         tickers = sp500_table['Symbol'].tolist()
         # Clean tickers (some have dots that need to be dashes for yfinance)
@@ -35,7 +50,7 @@ def get_sp400() -> List[str]:
     """
     try:
         url = "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies"
-        tables = pd.read_html(url)
+        tables = _fetch_wikipedia_table(url)
         sp400_table = tables[0]
         # Column name might vary
         if 'Symbol' in sp400_table.columns:
@@ -60,7 +75,7 @@ def get_sp600() -> List[str]:
     """
     try:
         url = "https://en.wikipedia.org/wiki/List_of_S%26P_600_companies"
-        tables = pd.read_html(url)
+        tables = _fetch_wikipedia_table(url)
         sp600_table = tables[0]
         if 'Symbol' in sp600_table.columns:
             tickers = sp600_table['Symbol'].tolist()
