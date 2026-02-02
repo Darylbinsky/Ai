@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
 """
-Stock Analyzer - Find Winning Patterns by Comparing Winners vs Losers
+Stock Analyzer - Data-Driven Stock Screening
 
-Analyzes BOTH top and bottom performing stocks to discover
-what metrics differentiate winners from losers.
+Two modes:
+1. ANALYZE: Compare winners vs losers to find what metrics matter
+2. SCREEN: Apply data-driven criteria to find stocks today
 
-This is REVERSE ENGINEERING - we look at actual winners AND losers
-to find patterns that truly matter.
+Criteria based on winners vs losers analysis:
+- Profit Margin > 6%
+- ROE > 9%
+- Revenue Growth > 7%
+- Debt/Equity < 65
+- Current Ratio > 1.8
+- Sectors: Energy, Tech, Industrials, Consumer Cyclical
 """
 
 from backtester import TopPerformersAnalysis
+from screener.data_driven_screener import run_screener
 from data import get_russell3000, get_sp500
 
 
@@ -24,8 +31,8 @@ SIMFIN_API_KEY = "cda023f3-0157-44f6-a30c-28b4a9c2b36f"
 USE_BROAD_MARKET = True
 
 # Analysis settings
-ANALYSIS_YEARS = [2020, 2021, 2022, 2023, 2024]  # Years to analyze
-TOP_N = 50  # Number of top/bottom performers per year
+ANALYSIS_YEARS = [2020, 2021, 2022, 2023, 2024]
+TOP_N = 50
 
 
 # ============================================================
@@ -35,18 +42,14 @@ TOP_N = 50  # Number of top/bottom performers per year
 def get_stock_universe():
     """Get the stock universe to analyze."""
     if USE_BROAD_MARKET:
-        print("\n" + "=" * 60)
-        print("FETCHING STOCK UNIVERSE")
-        print("=" * 60)
-        print("(S&P 1500 - covers large, mid, small cap)")
-        print()
+        print("\nFetching S&P 1500 stock list...")
         return get_russell3000()
     else:
         print("\nUsing S&P 500...")
         return get_sp500()
 
 
-def main():
+def run_analysis():
     """Analyze top AND bottom performers to find what truly differentiates winners."""
     print("\n" + "=" * 70)
     print("WINNERS vs LOSERS ANALYSIS - 50+ METRICS")
@@ -60,19 +63,10 @@ def main():
     print(f"  Bottom performers per year: {TOP_N}")
     print(f"  Total stocks to analyze: {TOP_N * len(ANALYSIS_YEARS) * 2}")
     print()
-    print("By comparing winners AND losers, we can find:")
-    print("  - Metrics where winners clearly differ from losers")
-    print("  - What to LOOK FOR (winner characteristics)")
-    print("  - What to AVOID (loser characteristics)")
-    print("  - Actionable screening criteria with clear thresholds")
-    print()
 
     input("Press Enter to start analysis...")
 
-    # Get universe
     universe = get_stock_universe()
-
-    # Create analyzer
     analyzer = TopPerformersAnalysis(api_key=SIMFIN_API_KEY)
 
     # Analyze TOP performers
@@ -97,7 +91,7 @@ def main():
         find_bottom=True
     )
 
-    # Show comparison - the key insight!
+    # Show comparison
     print("\n" + "#" * 70)
     print("PHASE 3: Comparing Winners vs Losers...")
     print("#" * 70)
@@ -110,18 +104,42 @@ def main():
         analyzer.export_to_csv(winners, 'winners_analysis.csv')
         analyzer.export_to_csv(losers, 'losers_analysis.csv')
         print("Data exported to winners_analysis.csv and losers_analysis.csv")
-        print("Open in Excel to do your own analysis!")
 
+
+def run_stock_screener():
+    """Run the data-driven stock screener."""
+    universe = get_stock_universe()
+    run_screener(universe)
+
+
+def main():
+    """Main menu."""
     print("\n" + "=" * 70)
-    print("ANALYSIS COMPLETE!")
+    print("STOCK ANALYZER - DATA-DRIVEN SCREENING")
     print("=" * 70)
     print()
-    print("Key takeaways:")
-    print("  1. Look at the METRIC COMPARISON table above")
-    print("  2. Metrics with large Diff% are most predictive")
-    print("  3. Use the ACTIONABLE SCREENING CRITERIA section")
-    print("  4. Sectors with positive diff = more winners than losers")
+    print("Options:")
     print()
+    print("  1. SCREEN STOCKS NOW")
+    print("     Apply data-driven criteria to find stocks today")
+    print("     Criteria: PM>6%, ROE>9%, RevG>7%, D/E<65, CR>1.8")
+    print("     Sectors: Energy, Tech, Industrials, Consumer Cyclical")
+    print()
+    print("  2. RUN ANALYSIS")
+    print("     Compare winners vs losers to refine criteria")
+    print("     (This takes longer - analyzes 500 stocks)")
+    print()
+
+    choice = input("Enter choice (1 or 2) [default=1]: ").strip()
+
+    if choice == '2':
+        run_analysis()
+    else:
+        run_stock_screener()
+
+    print("\n" + "=" * 70)
+    print("DONE!")
+    print("=" * 70)
 
 
 if __name__ == '__main__':
