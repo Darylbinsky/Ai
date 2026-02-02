@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Stock Analyzer - Find Winning Patterns
+Stock Analyzer - Find Winning Patterns by Comparing Winners vs Losers
 
-Analyzes the top performing stocks from each year to discover
-what metrics/characteristics they have in common.
+Analyzes BOTH top and bottom performing stocks to discover
+what metrics differentiate winners from losers.
 
-This is REVERSE ENGINEERING - instead of guessing what works,
-we look at actual winners and find patterns.
+This is REVERSE ENGINEERING - we look at actual winners AND losers
+to find patterns that truly matter.
 """
 
 from backtester import TopPerformersAnalysis
@@ -25,7 +25,7 @@ USE_BROAD_MARKET = True
 
 # Analysis settings
 ANALYSIS_YEARS = [2020, 2021, 2022, 2023, 2024]  # Years to analyze
-TOP_N = 50  # Number of top performers per year (50 = 250 total stocks analyzed)
+TOP_N = 50  # Number of top/bottom performers per year
 
 
 # ============================================================
@@ -47,26 +47,24 @@ def get_stock_universe():
 
 
 def main():
-    """Analyze top performers to find winning patterns."""
+    """Analyze top AND bottom performers to find what truly differentiates winners."""
     print("\n" + "=" * 70)
-    print("TOP PERFORMERS ANALYSIS - 50+ METRICS")
+    print("WINNERS vs LOSERS ANALYSIS - 50+ METRICS")
     print("=" * 70)
     print()
-    print("This will analyze the top performing stocks from each year")
-    print("and find what 50+ metrics they have in common.")
+    print("This will analyze BOTH top AND bottom performing stocks")
+    print("to find what metrics truly differentiate winners from losers.")
     print()
     print(f"  Years to analyze: {ANALYSIS_YEARS}")
     print(f"  Top performers per year: {TOP_N}")
-    print(f"  Total stocks to analyze: {TOP_N * len(ANALYSIS_YEARS)}")
+    print(f"  Bottom performers per year: {TOP_N}")
+    print(f"  Total stocks to analyze: {TOP_N * len(ANALYSIS_YEARS) * 2}")
     print()
-    print("Metrics collected include:")
-    print("  - Valuation: P/E, P/B, P/S, PEG, EV/EBITDA")
-    print("  - Profitability: ROE, ROA, margins")
-    print("  - Growth: revenue growth, earnings growth")
-    print("  - Financial: debt/equity, current ratio, cash flow")
-    print("  - Ownership: insider %, institutional %, short interest")
-    print("  - Momentum: beta, 52-week range, moving averages")
-    print("  - And 30+ more...")
+    print("By comparing winners AND losers, we can find:")
+    print("  - Metrics where winners clearly differ from losers")
+    print("  - What to LOOK FOR (winner characteristics)")
+    print("  - What to AVOID (loser characteristics)")
+    print("  - Actionable screening criteria with clear thresholds")
     print()
 
     input("Press Enter to start analysis...")
@@ -77,35 +75,52 @@ def main():
     # Create analyzer
     analyzer = TopPerformersAnalysis(api_key=SIMFIN_API_KEY)
 
-    # Run analysis
-    results = analyzer.analyze_multiple_years(
+    # Analyze TOP performers
+    print("\n" + "#" * 70)
+    print("PHASE 1: Analyzing TOP performers...")
+    print("#" * 70)
+    winners = analyzer.analyze_multiple_years(
         tickers=universe,
         years=ANALYSIS_YEARS,
-        top_n=TOP_N
+        top_n=TOP_N,
+        find_bottom=False
     )
 
-    # Show top stocks by year
-    analyzer.show_top_stocks(results, n=10)
+    # Analyze BOTTOM performers
+    print("\n" + "#" * 70)
+    print("PHASE 2: Analyzing BOTTOM performers...")
+    print("#" * 70)
+    losers = analyzer.analyze_multiple_years(
+        tickers=universe,
+        years=ANALYSIS_YEARS,
+        top_n=TOP_N,
+        find_bottom=True
+    )
 
-    # Show comprehensive pattern analysis
-    analyzer.summarize_patterns(results)
+    # Show comparison - the key insight!
+    print("\n" + "#" * 70)
+    print("PHASE 3: Comparing Winners vs Losers...")
+    print("#" * 70)
+    analyzer.compare_winners_vs_losers(winners, losers)
 
     # Offer to export
     print()
     export = input("Export data to CSV? (y/n) [default=n]: ").strip().lower()
     if export == 'y':
-        analyzer.export_to_csv(results, 'top_performers_analysis.csv')
-        print("Data exported to top_performers_analysis.csv")
+        analyzer.export_to_csv(winners, 'winners_analysis.csv')
+        analyzer.export_to_csv(losers, 'losers_analysis.csv')
+        print("Data exported to winners_analysis.csv and losers_analysis.csv")
         print("Open in Excel to do your own analysis!")
 
     print("\n" + "=" * 70)
     print("ANALYSIS COMPLETE!")
     print("=" * 70)
     print()
-    print("Next steps:")
-    print("  1. Review the KEY INSIGHTS section above")
-    print("  2. Note which metrics have consistent patterns")
-    print("  3. Use those ranges to build a screening strategy")
+    print("Key takeaways:")
+    print("  1. Look at the METRIC COMPARISON table above")
+    print("  2. Metrics with large Diff% are most predictive")
+    print("  3. Use the ACTIONABLE SCREENING CRITERIA section")
+    print("  4. Sectors with positive diff = more winners than losers")
     print()
 
 

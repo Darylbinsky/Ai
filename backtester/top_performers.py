@@ -196,10 +196,12 @@ class TopPerformersAnalysis:
         tickers: List[str],
         year: int,
         top_n: int = 100,
-        show_progress: bool = True
+        show_progress: bool = True,
+        find_bottom: bool = False
     ) -> List[Dict[str, Any]]:
-        """Find top performing stocks for a specific year with all metrics."""
-        print(f"\nAnalyzing {year}...")
+        """Find top or bottom performing stocks for a specific year with all metrics."""
+        label = "bottom" if find_bottom else "top"
+        print(f"\nAnalyzing {year} ({label} performers)...")
 
         results = []
         total = len(tickers)
@@ -225,15 +227,16 @@ class TopPerformersAnalysis:
         if show_progress:
             print(f"\r  Processed {total} stocks, {len(results)} had valid returns")
 
-        # Sort by return and get top N
-        results.sort(key=lambda x: x['return'], reverse=True)
-        top_performers = results[:top_n]
+        # Sort by return and get top/bottom N
+        results.sort(key=lambda x: x['return'], reverse=not find_bottom)
+        selected_performers = results[:top_n]
 
-        # Get ALL metrics for top performers
-        print(f"  Getting 50+ metrics for top {len(top_performers)} performers...")
-        for i, stock in enumerate(top_performers):
+        # Get ALL metrics for selected performers
+        label = "bottom" if find_bottom else "top"
+        print(f"  Getting 50+ metrics for {label} {len(selected_performers)} performers...")
+        for i, stock in enumerate(selected_performers):
             if (i + 1) % 20 == 0:
-                sys.stdout.write(f"\r  Fetching metrics: {i+1}/{len(top_performers)}")
+                sys.stdout.write(f"\r  Fetching metrics: {i+1}/{len(selected_performers)}")
                 sys.stdout.flush()
 
             metrics = self.get_all_metrics(stock['ticker'])
@@ -242,30 +245,32 @@ class TopPerformersAnalysis:
 
         print(f"\r  Done!                                        ")
 
-        return top_performers
+        return selected_performers
 
     def analyze_multiple_years(
         self,
         tickers: List[str],
         years: List[int] = None,
-        top_n: int = 100
+        top_n: int = 100,
+        find_bottom: bool = False
     ) -> Dict[int, List[Dict[str, Any]]]:
-        """Analyze top performers across multiple years."""
+        """Analyze top or bottom performers across multiple years."""
         if years is None:
             current_year = datetime.now().year
             years = list(range(current_year - 5, current_year))
 
+        label = "BOTTOM" if find_bottom else "TOP"
         print("\n" + "=" * 70)
-        print("TOP PERFORMERS ANALYSIS - 50+ METRICS")
+        print(f"{label} PERFORMERS ANALYSIS - 50+ METRICS")
         print("=" * 70)
-        print(f"\nAnalyzing top {top_n} performers for years: {years}")
+        print(f"\nAnalyzing {label.lower()} {top_n} performers for years: {years}")
         print(f"Universe: {len(tickers)} stocks")
         print(f"Metrics collected: {len(METRICS_TO_COLLECT)}+")
 
         all_results = {}
         for year in years:
-            top = self.find_top_performers(tickers, year, top_n)
-            all_results[year] = top
+            performers = self.find_top_performers(tickers, year, top_n, find_bottom=find_bottom)
+            all_results[year] = performers
 
         return all_results
 
@@ -452,3 +457,186 @@ class TopPerformersAnalysis:
         df.to_csv(filename, index=False)
         print(f"\nExported {len(all_data)} records to {filename}")
         return df
+
+    def compare_winners_vs_losers(
+        self,
+        winners: Dict[int, List[Dict[str, Any]]],
+        losers: Dict[int, List[Dict[str, Any]]]
+    ):
+        """
+        Compare metrics between top performers and bottom performers.
+        Shows which metrics best differentiate winners from losers.
+        """
+        print("\n" + "=" * 70)
+        print("WINNERS vs LOSERS COMPARISON")
+        print("=" * 70)
+
+        # Collect all data
+        winner_data = []
+        loser_data = []
+
+        for year, performers in winners.items():
+            for stock in performers:
+                winner_data.append(stock)
+
+        for year, performers in losers.items():
+            for stock in performers:
+                loser_data.append(stock)
+
+        if not winner_data or not loser_data:
+            print("Not enough data to compare.")
+            return
+
+        winner_df = pd.DataFrame(winner_data)
+        loser_df = pd.DataFrame(loser_data)
+
+        # Returns comparison
+        print("\n" + "-" * 70)
+        print("RETURNS COMPARISON")
+        print("-" * 70)
+
+        winner_returns = [p['return'] for p in winner_data if p.get('return')]
+        loser_returns = [p['return'] for p in loser_data if p.get('return')]
+
+        print(f"\n  WINNERS: {len(winner_returns)} stocks")
+        print(f"    Average Return: {np.mean(winner_returns):.1f}%")
+        print(f"    Median Return:  {np.median(winner_returns):.1f}%")
+        print(f"    Range: {min(winner_returns):.1f}% to {max(winner_returns):.1f}%")
+
+        print(f"\n  LOSERS: {len(loser_returns)} stocks")
+        print(f"    Average Return: {np.mean(loser_returns):.1f}%")
+        print(f"    Median Return:  {np.median(loser_returns):.1f}%")
+        print(f"    Range: {min(loser_returns):.1f}% to {max(loser_returns):.1f}%")
+
+        # Metric comparison
+        print("\n" + "-" * 70)
+        print("METRIC COMPARISON (Winners vs Losers)")
+        print("-" * 70)
+        print("\nMetrics sorted by how well they differentiate winners from losers:\n")
+
+        comparison_results = []
+
+        for col in winner_df.columns:
+            if col in ['ticker', 'year', 'return', 'sector', 'industry', 'cap_category']:
+                continue
+
+            try:
+                winner_vals = pd.to_numeric(winner_df[col], errors='coerce').dropna()
+                loser_vals = pd.to_numeric(loser_df[col], errors='coerce').dropna()
+
+                if len(winner_vals) < 10 or len(loser_vals) < 10:
+                    continue
+
+                winner_median = winner_vals.median()
+                loser_median = loser_vals.median()
+
+                # Calculate difference
+                if loser_median != 0:
+                    pct_diff = ((winner_median - loser_median) / abs(loser_median)) * 100
+                else:
+                    pct_diff = 0 if winner_median == 0 else 100
+
+                display_name = METRICS_TO_COLLECT.get(col, col)
+
+                comparison_results.append({
+                    'Metric': display_name,
+                    'Key': col,
+                    'Winner Median': winner_median,
+                    'Loser Median': loser_median,
+                    'Difference': winner_median - loser_median,
+                    'Pct Diff': pct_diff,
+                    'Data Points': min(len(winner_vals), len(loser_vals))
+                })
+
+            except Exception:
+                continue
+
+        # Sort by absolute percentage difference
+        comparison_results.sort(key=lambda x: abs(x['Pct Diff']), reverse=True)
+
+        # Display top 20 most differentiating metrics
+        table_data = []
+        for row in comparison_results[:25]:
+            table_data.append({
+                'Metric': row['Metric'],
+                'Winner': f"{row['Winner Median']:.2f}",
+                'Loser': f"{row['Loser Median']:.2f}",
+                'Diff': f"{row['Difference']:+.2f}",
+                'Diff%': f"{row['Pct Diff']:+.1f}%",
+            })
+
+        print(tabulate(table_data, headers='keys', tablefmt='grid'))
+
+        # Sector comparison
+        print("\n" + "-" * 70)
+        print("SECTOR COMPARISON")
+        print("-" * 70)
+
+        winner_sectors = {}
+        loser_sectors = {}
+
+        for stock in winner_data:
+            sector = stock.get('sector', 'Unknown')
+            winner_sectors[sector] = winner_sectors.get(sector, 0) + 1
+
+        for stock in loser_data:
+            sector = stock.get('sector', 'Unknown')
+            loser_sectors[sector] = loser_sectors.get(sector, 0) + 1
+
+        all_sectors = set(list(winner_sectors.keys()) + list(loser_sectors.keys()))
+        total_winners = len(winner_data)
+        total_losers = len(loser_data)
+
+        sector_table = []
+        for sector in all_sectors:
+            w_count = winner_sectors.get(sector, 0)
+            l_count = loser_sectors.get(sector, 0)
+            w_pct = (w_count / total_winners) * 100 if total_winners > 0 else 0
+            l_pct = (l_count / total_losers) * 100 if total_losers > 0 else 0
+            diff = w_pct - l_pct
+            sector_table.append({
+                'Sector': sector,
+                'Winners': f"{w_pct:.1f}%",
+                'Losers': f"{l_pct:.1f}%",
+                'Diff': f"{diff:+.1f}%"
+            })
+
+        sector_table.sort(key=lambda x: float(x['Diff'].replace('%', '').replace('+', '')), reverse=True)
+        print("\n" + tabulate(sector_table[:10], headers='keys', tablefmt='grid'))
+
+        # Actionable insights
+        print("\n" + "-" * 70)
+        print("ACTIONABLE SCREENING CRITERIA")
+        print("-" * 70)
+        print("\nBased on winner vs loser comparison, consider these filters:\n")
+
+        # Show key metrics with clear thresholds
+        key_metrics = ['trailingPE', 'priceToBook', 'profitMargins', 'returnOnEquity',
+                      'revenueGrowth', 'debtToEquity', 'heldPercentInsiders', 'beta',
+                      'earningsGrowth', 'currentRatio']
+
+        for key in key_metrics:
+            winner_row = None
+            loser_row = None
+            for row in comparison_results:
+                if row['Key'] == key:
+                    winner_row = row
+                    break
+
+            if winner_row:
+                w_med = winner_row['Winner Median']
+                l_med = winner_row['Loser Median']
+                name = winner_row['Metric']
+
+                # Determine if higher or lower is better
+                if w_med > l_med:
+                    direction = "HIGHER is better"
+                    suggestion = f"Look for: > {l_med:.1f}"
+                else:
+                    direction = "LOWER is better"
+                    suggestion = f"Look for: < {l_med:.1f}"
+
+                print(f"  {name}:")
+                print(f"    Winners: {w_med:.2f} | Losers: {l_med:.2f} ({direction})")
+                print(f"    {suggestion}")
+                print()
