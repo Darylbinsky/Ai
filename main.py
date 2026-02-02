@@ -17,6 +17,7 @@ Criteria based on winners vs losers analysis:
 
 from backtester import TopPerformersAnalysis
 from backtester.strategy_backtest import run_backtest
+from backtester.true_historical_backtest import run_true_backtest
 from screener.data_driven_screener import run_screener
 from data import get_russell3000, get_sp500
 
@@ -114,9 +115,15 @@ def run_stock_screener():
 
 
 def run_strategy_backtest():
-    """Run the strategy backtest."""
+    """Run the strategy backtest (uses current fundamentals)."""
     universe = get_stock_universe()
     run_backtest(universe)
+
+
+def run_true_historical_backtest():
+    """Run TRUE historical backtest using SimFin data."""
+    universe = get_stock_universe()
+    run_true_backtest(universe, api_key=SIMFIN_API_KEY)
 
 
 def main():
@@ -132,20 +139,26 @@ def main():
     print("     Criteria: PM>6%, ROE>9%, RevG>7%, D/E<65, CR>1.8")
     print("     Sectors: Energy, Tech, Industrials, Consumer Cyclical")
     print()
-    print("  2. BACKTEST STRATEGY")
-    print("     Test how this strategy performed historically")
-    print("     Shows returns for different entry years & holding periods")
+    print("  2. BACKTEST (Quick)")
+    print("     Uses today's fundamentals to screen, then checks historical returns")
+    print("     Fast but less accurate")
     print()
-    print("  3. RUN ANALYSIS")
+    print("  3. BACKTEST (True Historical)")
+    print("     Uses SimFin historical fundamentals at each date")
+    print("     Slower but accurate - tests what you would have actually picked")
+    print()
+    print("  4. RUN ANALYSIS")
     print("     Compare winners vs losers to refine criteria")
     print("     (This takes longer - analyzes 500 stocks)")
     print()
 
-    choice = input("Enter choice (1, 2, or 3) [default=1]: ").strip()
+    choice = input("Enter choice (1, 2, 3, or 4) [default=1]: ").strip()
 
     if choice == '2':
         run_strategy_backtest()
     elif choice == '3':
+        run_true_historical_backtest()
+    elif choice == '4':
         run_analysis()
     else:
         run_stock_screener()
