@@ -2,15 +2,13 @@
 """
 True Historical Backtester
 
-Uses SimFin for actual historical fundamental data to screen stocks
+Uses yfinance historical financial statements to screen stocks
 at each historical date, then measures forward returns.
 
 This is a TRUE backtest - we use the fundamentals that were available
 at each point in time, not today's data.
 """
 
-import simfin as sf
-from simfin.names import *
 import pandas as pd
 import numpy as np
 import yfinance as yf
@@ -18,7 +16,6 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import time
 import sys
-import os
 from tabulate import tabulate
 
 
@@ -33,43 +30,15 @@ CRITERIA = {
 
 ALLOWED_SECTORS = ['Energy', 'Technology', 'Industrials', 'Consumer Cyclical']
 
-# Map yfinance sectors to SimFin industries
-SECTOR_MAPPING = {
-    'Technology': ['Software', 'Hardware', 'Semiconductors', 'Technology Services'],
-    'Energy': ['Oil & Gas', 'Energy', 'Utilities'],
-    'Industrials': ['Industrial', 'Aerospace & Defense', 'Transportation', 'Machinery'],
-    'Consumer Cyclical': ['Retail', 'Consumer Discretionary', 'Automobiles', 'Consumer Services'],
-}
-
 
 class TrueHistoricalBacktester:
-    """Backtest using actual historical fundamental data from SimFin."""
+    """Backtest using actual historical fundamental data from yfinance."""
 
-    def __init__(self, api_key: str):
-        """Initialize with SimFin API key."""
-        self.api_key = api_key
-        sf.set_api_key(api_key)
-        sf.set_data_dir('~/simfin_data/')
-
-        self._income_df = None
-        self._balance_df = None
-        self._prices_df = None
-        self._companies_df = None
-
-        # Cache for sector lookups (use yfinance since SimFin doesn't have good sector data)
+    def __init__(self, api_key: str = None):
+        """Initialize backtester."""
+        # Cache for sector lookups
         self._sector_cache = {}
-
-    def _load_data(self):
-        """Load all required SimFin datasets."""
-        if self._income_df is None:
-            print("Loading SimFin datasets (first time may download data)...")
-            print("  Loading income statements...")
-            self._income_df = sf.load_income(variant='annual', market='us')
-            print("  Loading balance sheets...")
-            self._balance_df = sf.load_balance(variant='annual', market='us')
-            print("  Loading share prices...")
-            self._prices_df = sf.load_shareprices(market='us', variant='daily')
-            print("  Done loading data.")
+        self._financials_cache = {}
 
     def _get_sector(self, ticker: str) -> Optional[str]:
         """Get sector for a ticker (cached)."""
@@ -86,6 +55,29 @@ class TrueHistoricalBacktester:
             self._sector_cache[ticker] = None
             return None
 
+    def _get_historical_financials(self, ticker: str) -> Dict:
+        """Get historical financial statements for a ticker."""
+        if ticker in self._financials_cache:
+            return self._financials_cache[ticker]
+
+        try:
+            stock = yf.Ticker(ticker)
+
+            # Get annual financials (income statement)
+            income = stock.financials  # columns are dates, rows are line items
+
+            # Get annual balance sheet
+            balance = stock.balance_sheet
+
+            self._financials_cache[ticker] = {
+                'income': income,
+                'balance': balance,
+            }
+            return self._financials_cache[ticker]
+        except:
+            self._financials_cache[ticker] = {'income': None, 'balance': None}
+            return self._financials_cache[ticker]
+
     def _get_fundamentals_at_date(self, ticker: str, date: str) -> Optional[Dict]:
         """
         Get fundamental metrics for a stock as of a specific date.
@@ -93,60 +85,70 @@ class TrueHistoricalBacktester:
         """
         try:
             target_date = pd.to_datetime(date)
+            financials = self._get_historical_financials(ticker)
+
+            income = financials.get('income')
+            balance = financials.get('balance')
+
+            if income is None or income.empty or balance is None or balance.empty:
+                return None
+
+            # Find the most recent fiscal year before target date
+            # yfinance financials columns are dates
+            income_dates = pd.to_datetime(income.columns)
+            valid_dates = [d for d in income_dates if d <= target_date]
+
+            if not valid_dates:
+                return None
+
+            latest_date = max(valid_dates)
 
             # Get income statement data
-            if ticker not in self._income_df.index.get_level_values('Ticker'):
+            if latest_date not in income.columns:
+                # Try to find matching column
+                for col in income.columns:
+                    if pd.to_datetime(col) == latest_date:
+                        latest_date = col
+                        break
+
+            # Extract values - handle different row name formats
+            def get_value(df, names):
+                for name in names:
+                    if name in df.index:
+                        val = df.loc[name, latest_date] if latest_date in df.columns else None
+                        if val is not None and not pd.isna(val):
+                            return float(val)
                 return None
 
-            income_data = self._income_df.loc[ticker]
-            income_before_date = income_data[income_data.index <= target_date]
-
-            if income_before_date.empty:
-                return None
-
-            latest_income = income_before_date.iloc[-1]
-
-            # Get balance sheet data
-            if ticker not in self._balance_df.index.get_level_values('Ticker'):
-                return None
-
-            balance_data = self._balance_df.loc[ticker]
-            balance_before_date = balance_data[balance_data.index <= target_date]
-
-            if balance_before_date.empty:
-                return None
-
-            latest_balance = balance_before_date.iloc[-1]
+            revenue = get_value(income, ['Total Revenue', 'Revenue', 'Operating Revenue'])
+            net_income = get_value(income, ['Net Income', 'Net Income Common Stockholders'])
+            total_equity = get_value(balance, ['Total Stockholder Equity', 'Stockholders Equity', 'Total Equity Gross Minority Interest', 'Common Stock Equity'])
+            total_debt = get_value(balance, ['Total Debt', 'Long Term Debt', 'Total Liabilities Net Minority Interest'])
+            current_assets = get_value(balance, ['Total Current Assets', 'Current Assets'])
+            current_liabilities = get_value(balance, ['Total Current Liabilities', 'Current Liabilities'])
 
             # Calculate metrics
-            revenue = latest_income.get(REVENUE, 0)
-            net_income = latest_income.get(NET_INCOME, 0)
-            total_equity = latest_balance.get(TOTAL_EQUITY, 0)
-            total_debt = latest_balance.get(TOTAL_DEBT, 0) or latest_balance.get(TOTAL_LIABILITIES, 0)
-            current_assets = latest_balance.get(TOTAL_CUR_ASSETS, 0)
-            current_liabilities = latest_balance.get(TOTAL_CUR_LIAB, 0)
+            profit_margin = (net_income / revenue) if revenue and revenue > 0 and net_income else None
+            roe = (net_income / total_equity) if total_equity and total_equity > 0 and net_income else None
+            debt_equity = (total_debt / total_equity * 100) if total_equity and total_equity > 0 and total_debt else None
+            current_ratio = (current_assets / current_liabilities) if current_liabilities and current_liabilities > 0 and current_assets else None
 
-            # Profit margin
-            profit_margin = (net_income / revenue) if revenue and revenue > 0 else None
-
-            # ROE
-            roe = (net_income / total_equity) if total_equity and total_equity > 0 else None
-
-            # Debt/Equity
-            debt_equity = (total_debt / total_equity * 100) if total_equity and total_equity > 0 else None
-
-            # Current ratio
-            current_ratio = (current_assets / current_liabilities) if current_liabilities and current_liabilities > 0 else None
-
-            # Revenue growth (compare to previous year)
-            if len(income_before_date) >= 2:
-                prev_revenue = income_before_date.iloc[-2].get(REVENUE, 0)
-                if prev_revenue and prev_revenue > 0:
-                    revenue_growth = (revenue - prev_revenue) / prev_revenue
-                else:
-                    revenue_growth = None
-            else:
-                revenue_growth = None
+            # Revenue growth - compare to previous year
+            revenue_growth = None
+            prev_dates = [d for d in income_dates if d < latest_date]
+            if prev_dates and revenue:
+                prev_date = max(prev_dates)
+                for col in income.columns:
+                    if pd.to_datetime(col) == prev_date:
+                        prev_revenue = get_value(income, ['Total Revenue', 'Revenue', 'Operating Revenue'])
+                        # Need to get from prev column
+                        for name in ['Total Revenue', 'Revenue', 'Operating Revenue']:
+                            if name in income.index:
+                                prev_val = income.loc[name, col]
+                                if prev_val and not pd.isna(prev_val) and float(prev_val) > 0:
+                                    revenue_growth = (revenue - float(prev_val)) / float(prev_val)
+                                    break
+                        break
 
             return {
                 'profit_margin': profit_margin,
@@ -161,46 +163,41 @@ class TrueHistoricalBacktester:
         except Exception as e:
             return None
 
-    def _get_price_at_date(self, ticker: str, date: str) -> Optional[float]:
+    def _get_historical_price(self, ticker: str, date: str) -> Optional[float]:
         """Get stock price at a specific date."""
         try:
-            if ticker not in self._prices_df.index.get_level_values('Ticker'):
-                return None
-
-            ticker_prices = self._prices_df.loc[ticker]
-            target_date = pd.to_datetime(date)
-
-            # Find closest available date
-            available_dates = ticker_prices.index
-            closest_idx = available_dates.get_indexer([target_date], method='ffill')[0]
-
-            if closest_idx < 0:
-                return None
-
-            return ticker_prices.iloc[closest_idx][CLOSE]
+            stock = yf.Ticker(ticker)
+            start = pd.to_datetime(date) - timedelta(days=5)
+            end = pd.to_datetime(date) + timedelta(days=5)
+            hist = stock.history(start=start, end=end)
+            if not hist.empty:
+                return hist['Close'].iloc[0]
         except:
-            return None
+            pass
+        return None
 
     def _calculate_return(self, ticker: str, start_date: str, end_date: str) -> Optional[float]:
-        """Calculate return between two dates using SimFin price data."""
-        start_price = self._get_price_at_date(ticker, start_date)
-        end_price = self._get_price_at_date(ticker, end_date)
-
-        if start_price and end_price and start_price > 0:
-            return ((end_price - start_price) / start_price) * 100
+        """Calculate return between two dates."""
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(start=start_date, end=end_date)
+            if len(hist) >= 2:
+                start_price = hist['Close'].iloc[0]
+                end_price = hist['Close'].iloc[-1]
+                return ((end_price - start_price) / start_price) * 100
+        except:
+            pass
         return None
 
     def screen_at_date(self, tickers: List[str], date: str, show_progress: bool = True) -> List[Dict]:
         """
         Screen stocks using historical fundamentals at a specific date.
-
-        This is a TRUE historical screen - uses only data available at that time.
         """
         passed = []
         stats = {'total': 0, 'no_data': 0, 'wrong_sector': 0, 'failed_criteria': 0}
 
         for i, ticker in enumerate(tickers):
-            if show_progress and (i + 1) % 100 == 0:
+            if show_progress and (i + 1) % 50 == 0:
                 sys.stdout.write(f"\r  Screening: {i+1}/{len(tickers)} ({len(passed)} passed)")
                 sys.stdout.flush()
 
@@ -253,7 +250,7 @@ class TrueHistoricalBacktester:
                 'current_ratio': cr,
             })
 
-            time.sleep(0.02)  # Rate limit yfinance sector lookups
+            time.sleep(0.05)  # Rate limit
 
         if show_progress:
             print(f"\r  Screening: {len(tickers)}/{len(tickers)} - {len(passed)} passed")
@@ -276,15 +273,15 @@ class TrueHistoricalBacktester:
         3. Measure returns over the holding period
         """
         if entry_years is None:
-            entry_years = [2018, 2019, 2020, 2021, 2022, 2023]
+            entry_years = [2020, 2021, 2022, 2023]
         if holding_periods is None:
             holding_periods = [12]
 
         print("\n" + "=" * 70)
         print("TRUE HISTORICAL BACKTEST")
         print("=" * 70)
-        print("\nThis uses ACTUAL historical fundamentals from SimFin")
-        print("(not today's data projected backwards)")
+        print("\nThis uses ACTUAL historical financials from yfinance")
+        print("(annual reports available at each point in time)")
         print("\nCriteria:")
         print(f"  Profit Margin > {CRITERIA['profit_margin_min']*100}%")
         print(f"  ROE > {CRITERIA['roe_min']*100}%")
@@ -294,9 +291,7 @@ class TrueHistoricalBacktester:
         print(f"  Sectors: {', '.join(ALLOWED_SECTORS)}")
         print(f"\nEntry years: {entry_years}")
         print(f"Holding periods: {holding_periods} months")
-
-        # Load SimFin data
-        self._load_data()
+        print(f"Universe: {len(tickers)} stocks")
 
         results = []
 
@@ -406,33 +401,27 @@ class TrueHistoricalBacktester:
             entry_date = f"{year}-01-02"
             exit_date = (pd.to_datetime(entry_date) + pd.DateOffset(months=months)).strftime('%Y-%m-%d')
 
-            # Get SPY return using yfinance (more reliable for SPY)
-            try:
-                spy = yf.Ticker('SPY')
-                hist = spy.history(start=entry_date, end=exit_date)
-                if len(hist) >= 2:
-                    spy_return = ((hist['Close'].iloc[-1] - hist['Close'].iloc[0]) / hist['Close'].iloc[0]) * 100
-                    alpha = r['Avg Return'] - spy_return
-                    print(f"  {year} ({months}mo): Strategy {r['Avg Return']:+.1f}% vs SPY {spy_return:+.1f}% = Alpha {alpha:+.1f}%")
-            except:
-                pass
+            spy_return = self._calculate_return('SPY', entry_date, exit_date)
+            if spy_return is not None:
+                alpha = r['Avg Return'] - spy_return
+                print(f"  {year} ({months}mo): Strategy {r['Avg Return']:+.1f}% vs SPY {spy_return:+.1f}% = Alpha {alpha:+.1f}%")
 
 
-def run_true_backtest(tickers: List[str], api_key: str):
+def run_true_backtest(tickers: List[str], api_key: str = None):
     """Run the true historical backtest."""
     backtester = TrueHistoricalBacktester(api_key=api_key)
 
     print("\nTrue Historical Backtest Configuration:")
     print("-" * 40)
-    print("Note: SimFin free tier has data from ~2010 onwards")
+    print("Note: yfinance has ~4 years of historical financials")
     print()
 
     # Entry years
-    years_input = input("Entry years (comma-separated) [default: 2018,2019,2020,2021,2022,2023]: ").strip()
+    years_input = input("Entry years (comma-separated) [default: 2020,2021,2022,2023]: ").strip()
     if years_input:
         entry_years = [int(y.strip()) for y in years_input.split(',')]
     else:
-        entry_years = [2018, 2019, 2020, 2021, 2022, 2023]
+        entry_years = [2020, 2021, 2022, 2023]
 
     # Holding periods
     hold_input = input("Holding periods in months (comma-separated) [default: 12]: ").strip()
