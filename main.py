@@ -16,6 +16,7 @@ Criteria based on winners vs losers analysis:
 """
 
 from backtester import TopPerformersAnalysis
+from backtester.strategy_backtest import run_backtest
 from screener.data_driven_screener import run_screener
 from data import get_russell3000, get_sp500
 
@@ -112,6 +113,12 @@ def run_stock_screener():
     run_screener(universe)
 
 
+def run_strategy_backtest():
+    """Run the strategy backtest."""
+    universe = get_stock_universe()
+    run_backtest(universe)
+
+
 def main():
     """Main menu."""
     print("\n" + "=" * 70)
@@ -125,14 +132,20 @@ def main():
     print("     Criteria: PM>6%, ROE>9%, RevG>7%, D/E<65, CR>1.8")
     print("     Sectors: Energy, Tech, Industrials, Consumer Cyclical")
     print()
-    print("  2. RUN ANALYSIS")
+    print("  2. BACKTEST STRATEGY")
+    print("     Test how this strategy performed historically")
+    print("     Shows returns for different entry years & holding periods")
+    print()
+    print("  3. RUN ANALYSIS")
     print("     Compare winners vs losers to refine criteria")
     print("     (This takes longer - analyzes 500 stocks)")
     print()
 
-    choice = input("Enter choice (1 or 2) [default=1]: ").strip()
+    choice = input("Enter choice (1, 2, or 3) [default=1]: ").strip()
 
     if choice == '2':
+        run_strategy_backtest()
+    elif choice == '3':
         run_analysis()
     else:
         run_stock_screener()
