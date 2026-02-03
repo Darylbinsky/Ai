@@ -18,6 +18,7 @@ Criteria based on winners vs losers analysis:
 from backtester import TopPerformersAnalysis
 from backtester.strategy_backtest import run_backtest
 from backtester.true_historical_backtest import run_true_backtest
+from backtester.optimizer import run_optimizer
 from screener.data_driven_screener import run_screener
 from data import get_russell3000, get_sp500
 
@@ -121,9 +122,15 @@ def run_strategy_backtest():
 
 
 def run_true_historical_backtest():
-    """Run TRUE historical backtest using SimFin data."""
+    """Run TRUE historical backtest using yfinance data."""
     universe = get_stock_universe()
     run_true_backtest(universe, api_key=SIMFIN_API_KEY)
+
+
+def run_strategy_optimizer():
+    """Run the strategy optimizer to find best criteria."""
+    universe = get_stock_universe()
+    run_optimizer(universe)
 
 
 def main():
@@ -136,28 +143,24 @@ def main():
     print()
     print("  1. SCREEN STOCKS NOW")
     print("     Apply data-driven criteria to find stocks today")
-    print("     Criteria: PM>6%, ROE>9%, RevG>7%, D/E<65, CR>1.8")
-    print("     Sectors: Energy, Tech, Industrials, Consumer Cyclical")
     print()
-    print("  2. BACKTEST (Quick)")
-    print("     Uses today's fundamentals to screen, then checks historical returns")
-    print("     Fast but less accurate")
+    print("  2. BACKTEST (True Historical)")
+    print("     Test current criteria across multiple years")
     print()
-    print("  3. BACKTEST (True Historical)")
-    print("     Uses SimFin historical fundamentals at each date")
-    print("     Slower but accurate - tests what you would have actually picked")
+    print("  3. OPTIMIZE CRITERIA (Recommended)")
+    print("     Auto-test 1000+ criteria combinations to find consistent alpha")
+    print("     Loads data once, then tests fast")
     print()
     print("  4. RUN ANALYSIS")
-    print("     Compare winners vs losers to refine criteria")
-    print("     (This takes longer - analyzes 500 stocks)")
+    print("     Compare winners vs losers to understand what works")
     print()
 
     choice = input("Enter choice (1, 2, 3, or 4) [default=1]: ").strip()
 
     if choice == '2':
-        run_strategy_backtest()
-    elif choice == '3':
         run_true_historical_backtest()
+    elif choice == '3':
+        run_strategy_optimizer()
     elif choice == '4':
         run_analysis()
     else:
