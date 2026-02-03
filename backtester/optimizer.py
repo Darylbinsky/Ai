@@ -196,16 +196,29 @@ class StrategyOptimizer:
                 if not fund:
                     continue
 
-                # Apply criteria
-                if fund['pm'] is None or fund['pm'] < pm_min:
+                # Apply criteria - skip metric if None (be more lenient)
+                pm = fund.get('pm')
+                roe = fund.get('roe')
+                rg = fund.get('rg')
+                de = fund.get('de')
+                cr = fund.get('cr')
+
+                # Must have at least PM and ROE
+                if pm is None or roe is None:
                     continue
-                if fund['roe'] is None or fund['roe'] < roe_min:
+
+                if pm < pm_min:
                     continue
-                if fund['rg'] is None or fund['rg'] < rg_min:
+                if roe < roe_min:
                     continue
-                if fund['de'] is None or fund['de'] > de_max:
+                # Revenue growth - allow None (not all companies report consistently)
+                if rg is not None and rg < rg_min:
                     continue
-                if fund['cr'] is None or fund['cr'] < cr_min:
+                # Debt/equity - allow None (some companies have no debt)
+                if de is not None and de > de_max:
+                    continue
+                # Current ratio - allow None
+                if cr is not None and cr < cr_min:
                     continue
 
                 ret = self.get_return(ticker, year)
@@ -247,24 +260,39 @@ class StrategyOptimizer:
         print("=" * 70)
 
         # Define parameter ranges to test
-        pm_range = [0.03, 0.05, 0.07, 0.10]       # 3%, 5%, 7%, 10%
-        roe_range = [0.05, 0.08, 0.12, 0.15]      # 5%, 8%, 12%, 15%
-        rg_range = [0.0, 0.05, 0.10, 0.15]        # 0%, 5%, 10%, 15%
-        de_range = [50, 80, 120, 200]             # Max debt/equity
-        cr_range = [1.0, 1.5, 2.0, 2.5]           # Min current ratio
+        pm_range = [0.02, 0.04, 0.06, 0.08]       # 2%, 4%, 6%, 8%
+        roe_range = [0.04, 0.06, 0.08, 0.10]      # 4%, 6%, 8%, 10%
+        rg_range = [-0.05, 0.0, 0.05, 0.10]       # -5%, 0%, 5%, 10%
+        de_range = [60, 100, 150, 300]            # Max debt/equity
+        cr_range = [0.8, 1.2, 1.5, 2.0]           # Min current ratio
 
         combinations = list(product(pm_range, roe_range, rg_range, de_range, cr_range))
         print(f"\nTesting {len(combinations)} criteria combinations...")
+
+        # First test loosest criteria to see how many stocks we get
+        test_result = self.test_criteria(0.02, 0.04, -0.05, 300, 0.8, years)
+        if test_result:
+            print(f"  Loosest criteria finds ~{test_result['total_stocks']//len(years)} stocks/year")
+        else:
+            print("  WARNING: Even loosest criteria finds no stocks!")
+            print("  Checking data quality...")
+            # Debug: check how many stocks have valid fundamentals
+            valid_count = 0
+            for ticker in list(self.data_cache.keys())[:50]:
+                fund = self.get_fundamentals(ticker, years[0])
+                if fund and all(v is not None for v in fund.values()):
+                    valid_count += 1
+            print(f"  Of first 50 stocks, {valid_count} have complete fundamentals")
 
         best_results = []
 
         for i, (pm, roe, rg, de, cr) in enumerate(combinations):
             if (i + 1) % 100 == 0:
-                sys.stdout.write(f"\r  Progress: {i+1}/{len(combinations)}")
+                sys.stdout.write(f"\r  Progress: {i+1}/{len(combinations)} ({len(best_results)} valid)")
                 sys.stdout.flush()
 
             result = self.test_criteria(pm, roe, rg, de, cr, years)
-            if result and result['total_stocks'] >= len(years) * 5:  # At least 5 stocks per year
+            if result and result['total_stocks'] >= len(years) * 3:  # At least 3 stocks per year
                 best_results.append({
                     'pm': pm, 'roe': roe, 'rg': rg, 'de': de, 'cr': cr,
                     **result
